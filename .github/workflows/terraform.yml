@@ -8,8 +8,8 @@ on:
     branches:
       - main
 
-# permissions:
-#   contents: read
+permissions:
+  contents: read
 
 jobs:
   terraform:
@@ -48,15 +48,19 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve
 
-      # - name: Terraform Destroy
-      #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      #   run: terraform destroy -auto-approve
-        
-      - name: Notify Slack on Failure
-        if: failure()
+      - name: Terraform Destroy
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform destroy -auto-approve
+
+  notify-slack:
+    needs: terraform
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Notify Slack of Result
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_COLOR: '#FF0000'
-          SLACK_TITLE: 'Terraform CI Failed'
-          SLACK_MESSAGE: 'A step in the Terraform CI workflow has failed. Please check the GitHub Actions logs for details.'
+          SLACK_COLOR: ${{ needs.terraform.result == 'success' && '#36a64f' || '#FF0000' }}
+          SLACK_TITLE: ${{ needs.terraform.result == 'success' && 'Terraform CI Succeeded' || 'Terraform CI Failed' }}
+          SLACK_MESSAGE: ${{ needs.terraform.result == 'success' && 'All steps in the Terraform CI workflow have passed successfully! :tada:' || 'A step in the Terraform CI workflow has failed. Please check the GitHub Actions logs for details.' }}
