@@ -10,4 +10,13 @@ module "ec2_instance" {
   monitoring    = var.monitoring
   ebs_optimized = var.ebs_optimized
   iam_instance_profile = var.iam_instance_profile
-} 
+}
+
+terraform {
+  backend "s3" {
+    bucket = "sarvinbucket2"
+    key    = "terraform/terraform.tfstate"
+    region = "us-east-1"
+    encrypt = true
+  }
+}
