@@ -15,15 +15,28 @@ jobs:
   terraform:
     name: 'Terraform'
     runs-on: ubuntu-latest
+    outputs:
+      checkov_failed: ${{ steps.set_checkov_status.outputs.checkov_failed }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Run Checkov (IaC security scan)
+        id: checkov
+        continue-on-error: true
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: .
+
+      - name: Set Checkov Status
+        id: set_checkov_status
+        run: |
+          if [ "${{ steps.checkov.outcome }}" = "failure" ]; then
+            echo "checkov_failed=true" >> $GITHUB_OUTPUT
+          else
+            echo "checkov_failed=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -57,10 +70,26 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
+      - name: Set Slack Message and Title
+        run: |
+          if [[ "${{ needs.terraform.result }}" == "success" ]]; then
+            echo "SLACK_COLOR=#36a64f" >> $GITHUB_ENV
+            echo "SLACK_TITLE=Terraform CI Succeeded" >> $GITHUB_ENV
+            echo "SLACK_MESSAGE=All steps in the Terraform CI workflow have passed successfully! :tada:" >> $GITHUB_ENV
+          elif [[ "${{ needs.terraform.outputs.checkov_failed }}" == "true" ]]; then
+            echo "SLACK_COLOR=#FF0000" >> $GITHUB_ENV
+            echo "SLACK_TITLE=Checkov Failed" >> $GITHUB_ENV
+            echo "SLACK_MESSAGE=Checkov failed: Please review the IaC security scan results." >> $GITHUB_ENV
+          else
+            echo "SLACK_COLOR=#FF0000" >> $GITHUB_ENV
+            echo "SLACK_TITLE=Terraform CI Failed" >> $GITHUB_ENV
+            echo "SLACK_MESSAGE=A step in the Terraform CI workflow has failed. Please check the GitHub Actions logs for details." >> $GITHUB_ENV
+          fi
+
       - name: Notify Slack of Result
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_COLOR: ${{ needs.terraform.result == 'success' && '#36a64f' || '#FF0000' }}
-          SLACK_TITLE: ${{ needs.terraform.result == 'success' && 'Terraform CI Succeeded' || 'Terraform CI Failed' }}
-          SLACK_MESSAGE: ${{ needs.terraform.result == 'success' && 'All steps in the Terraform CI workflow have passed successfully! :tada:' || 'A step in the Terraform CI workflow has failed. Please check the GitHub Actions logs for details.' }}
+          SLACK_COLOR: ${{ env.SLACK_COLOR }}
+          SLACK_TITLE: ${{ env.SLACK_TITLE }}
+          SLACK_MESSAGE: ${{ env.SLACK_MESSAGE }}
